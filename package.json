@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "latest",
+    "@uniswap/sdk-core": "^7.10.1",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.4",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -20,7 +23,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "@wagmi/cli": "latest",
+    "@wagmi/cli": "^2.8.0",
     "typescript": "latest"
   }
 }
