@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useConnect, useDisconnect, useConnection, useBalance, useChainId, useConnectors } from 'wagmi'
-import { formatUnits } from 'viem'
+import { formatUnits, parseUnits } from 'viem'
 import { Particles } from '@/components/Particles'
 import { CloudDecor } from '@/components/CloudDecor'
 import { TokenSelector } from '@/components/TokenSelector'
 import {useQuote} from '@/hooks/useQuote'
 import { useToken } from '@/hooks/useToken'
-import { getToken } from '@/constants/tokens'
+import { getToken, resolveTokenSymbol, SwapRouter02_ADDRESS} from '@/constants/tokens'
+import { useSwap } from '@/hooks/useSwap'
+import { useAllownce } from '@/hooks/useAllownce'
+import { useApprove } from '@/hooks/useApprove'
 
 // 模拟代币列表 - 修仙风格命名
 const TOKENS = [
@@ -16,6 +19,12 @@ const TOKENS = [
   { symbol: 'USDC', name: '稳定丹', icon: '🔮', color: 'usdc' },
   { symbol: 'DAI', name: '金元丹', icon: '🌟', color: 'dai' },
 ]
+
+// 区块浏览器配置
+const BLOCK_EXPLORERS: Record<number, string> = {
+  1: 'https://etherscan.io',
+  11155111: 'https://sepolia.etherscan.io',
+}
 
 
 function App() {
@@ -31,15 +40,61 @@ function App() {
   const [toAmount, setToAmount] = useState('')
   const [showConnectors, setShowConnectors] = useState(false)
 
-  const { data: balance } = useBalance({ address })
+  const { data: balance, refetch } = useBalance({ address })
   const formattedBalance = balance ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(4)} ${balance.symbol}` : '0'
 
   const { amountOut, isLoading, error } = useQuote(fromToken.symbol, toToken.symbol, fromAmount)
 
   const fromTokenInfo = getToken(chainId, fromToken.symbol)
-  const { balance: fromTokenBalance } = useToken(fromTokenInfo?.address!, address)
+  const { balance: fromTokenBalance, refetch: refetchTokenBalance } = useToken(fromTokenInfo?.address!, address)
   const formattedTokenBalance = fromTokenBalance ? `${Number(formatUnits(fromTokenBalance, fromTokenInfo?.decimals!)).toFixed(4)} ${fromToken.symbol}` : '0'
 
+  // 计算正确的 amountIn（根据代币 decimals）
+  const fromTokenDecimals = fromTokenInfo?.decimals ?? 18
+  const amountIn = fromAmount && Number(fromAmount) > 0 
+    ? parseUnits(fromAmount, fromTokenDecimals) 
+    : 0n
+
+  const { swap, hash, receipt, isPending, isConfirming, isConfirmed } = useSwap(
+    getToken(chainId, resolveTokenSymbol(fromToken.symbol))?.address!, 
+    getToken(chainId, resolveTokenSymbol(toToken.symbol))?.address!, 
+    amountIn, 
+    500, 
+    address!, 
+    0n, 
+    fromToken.symbol === 'ETH'
+  )
+  
+  const { 
+    approve, 
+    isPending: isApprovePending, 
+    isConfirming: isApproveConfirming, 
+    isConfirmed: isApproveConfirmed 
+  } = useApprove(
+    getToken(chainId, resolveTokenSymbol(fromToken.symbol))?.address!, 
+    SwapRouter02_ADDRESS[chainId], 
+    amountIn
+  )
+  
+  const { 
+    allowance, 
+    refetch: refetchAllowance,
+    revoke,
+    isRevoking,
+    isRevokeConfirming,
+    isRevokeConfirmed
+  } = useAllownce(
+    getToken(chainId, resolveTokenSymbol(fromToken.symbol))?.address!, 
+    address!, 
+    SwapRouter02_ADDRESS[chainId]
+  )
+
+  console.log('allowance', allowance)
+
+  // 是否需要 approve（非 ETH 且 allowance 不足）
+  const needsApproval = fromToken.symbol !== 'ETH' && 
+    amountIn > 0n && 
+    (!allowance || allowance < amountIn)
 
   // 计算输出金额
   // const calculateOutput = useCallback((amount: string, from: string, to: string) => {
@@ -57,6 +112,28 @@ function App() {
   useEffect(() => {
     setToAmount(amountOut)
   }, [amountOut])
+
+  useEffect(() => { 
+    if (isConfirmed) {
+      refetch() // 刷新 ETH 余额
+      refetchTokenBalance?.() // 刷新 token 余额（安全调用）
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConfirmed])
+
+  // approve 成功后刷新 allowance
+  useEffect(() => {
+    if (isApproveConfirmed) {
+      refetchAllowance()
+    }
+  }, [isApproveConfirmed, refetchAllowance])
+
+  // revoke 成功后刷新 allowance
+  useEffect(() => {
+    if (isRevokeConfirmed) {
+      refetchAllowance()
+    }
+  }, [isRevokeConfirmed, refetchAllowance])
 
   // 交换代币
   const handleSwapTokens = () => {
@@ -81,6 +158,8 @@ function App() {
     const rate = Number(amountOut) / Number(fromAmount)
     return `1 ${fromToken.symbol} ≈ ${rate.toFixed(4)} ${toToken.symbol}`
   }
+
+  // 删除旧的 handleSwap，改用分开的按钮逻辑
 
   return (
     <>
@@ -193,14 +272,81 @@ function App() {
             </div>
           )}
 
+          {/* 交易状态显示 */}
+          {(isPending || isConfirming || isConfirmed || hash) && (
+            <div className="tx-status">
+              {/* 进度条 */}
+              <div className="tx-progress">
+                <div className={`tx-step ${isPending || isConfirming || isConfirmed ? 'active' : ''} ${isConfirming || isConfirmed ? 'done' : ''}`}>
+                  <div className="tx-step-icon">{isConfirming || isConfirmed ? '✓' : isPending ? '◉' : '○'}</div>
+                  <span>签名</span>
+                </div>
+                <div className={`tx-step-line ${isConfirming || isConfirmed ? 'done' : ''}`} />
+                <div className={`tx-step ${isConfirming || isConfirmed ? 'active' : ''} ${isConfirmed ? 'done' : ''}`}>
+                  <div className="tx-step-icon">{isConfirmed ? '✓' : isConfirming ? '◉' : '○'}</div>
+                  <span>确认</span>
+                </div>
+                <div className={`tx-step-line ${isConfirmed ? 'done' : ''}`} />
+                <div className={`tx-step ${isConfirmed ? 'active done' : ''}`}>
+                  <div className="tx-step-icon">{isConfirmed ? '✓' : '○'}</div>
+                  <span>完成</span>
+                </div>
+              </div>
+
+              {/* 状态文字 */}
+              <div className="tx-message">
+                {isPending && (
+                  <span className="tx-pending">
+                    <span className="tx-spinner" /> 请在钱包中确认交易...
+                  </span>
+                )}
+                {isConfirming && (
+                  <span className="tx-confirming">
+                    <span className="tx-spinner" /> 交易确认中，请稍候...
+                  </span>
+                )}
+                {isConfirmed && (
+                  <span className="tx-success">
+                    ✨ 炼丹成功！灵材已转化
+                  </span>
+                )}
+              </div>
+
+              {/* 交易 Hash 链接 */}
+              {hash && (
+                <a
+                  href={`${BLOCK_EXPLORERS[chainId] || 'https://etherscan.io'}/tx/${hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tx-hash-link"
+                >
+                  🔗 查看仙籍记录 ({hash.slice(0, 8)}...{hash.slice(-6)})
+                </a>
+              )}
+            </div>
+          )}
+
           {/* 操作按钮 */}
           {isConnected ? (
-            <button
-              className="swap-btn"
-              disabled={!fromAmount || Number(fromAmount) <= 0}
-            >
-              {fromAmount && Number(fromAmount) > 0 ? '开始炼制' : '请输入灵材数量'}
-            </button>
+            needsApproval ? (
+              // 需要先授权
+              <button
+                className="swap-btn approve"
+                disabled={!fromAmount || Number(fromAmount) <= 0 || isApprovePending || isApproveConfirming}
+                onClick={approve}
+              >
+                {isApprovePending ? '等待签名...' : isApproveConfirming ? '授权中...' : `授权 ${fromToken.symbol}`}
+              </button>
+            ) : (
+              // 已授权或ETH，可以直接swap
+              <button
+                className="swap-btn"
+                disabled={!fromAmount || Number(fromAmount) <= 0 || isPending || isConfirming}
+                onClick={swap}
+              >
+                {isPending ? '等待签名...' : isConfirming ? '确认中...' : fromAmount && Number(fromAmount) > 0 ? '开始炼制' : '请输入灵材数量'}
+              </button>
+            )
           ) : (
             <button
               className="swap-btn connect-prompt"
@@ -227,6 +373,22 @@ function App() {
                 <span className="status-label">修炼境界</span>
                 <span className="status-value">链ID: {chainId}</span>
               </div>
+              {/* 授权状态显示（非 ETH 且有授权时显示撤销按钮）*/}
+              {fromToken.symbol !== 'ETH' && allowance && allowance > 0n && (
+                <div className="status-row">
+                  <span className="status-label">{fromToken.symbol} 授权</span>
+                  <span className="status-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#4ade80' }}>已授权</span>
+                    <button
+                      className="revoke-btn"
+                      onClick={revoke}
+                      disabled={isRevoking || isRevokeConfirming}
+                    >
+                      {isRevoking ? '签名中...' : isRevokeConfirming ? '撤销中...' : '撤销'}
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

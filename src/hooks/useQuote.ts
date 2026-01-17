@@ -1,7 +1,7 @@
-import { useChainId } from 'wagmi'
+import { useChainId, useReadContract } from 'wagmi'
 import { parseUnits, formatUnits } from 'viem'
 import { getToken, getQuoterAddress, resolveTokenSymbol } from '../constants/tokens'
-import { useReadQuoterV2QuoteExactInputSingle } from '../quoterV2'
+import { quoterV2Abi } from '../abi/quoterV2'
 
 export function useQuote(
     tokenInSymbol: string,
@@ -16,7 +16,10 @@ export function useQuote(
 
     const canQuote = !!(tokenIn && tokenOut && quoterAddress && amountIn && Number(amountIn) > 0)
 
-    const { data, isLoading , error} = useReadQuoterV2QuoteExactInputSingle({
+    const { data, isLoading , error} = useReadContract({
+        address: quoterAddress,
+        abi: quoterV2Abi,
+        functionName: 'quoteExactInputSingle',
         args: canQuote ? [{
             tokenIn: tokenIn!.address,
             tokenOut: tokenOut!.address,

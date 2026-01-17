@@ -61,6 +61,11 @@ export const QUOTER_V2_ADDRESS: Record<number, `0x${string}`> = {
   11155111: '0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3',  // Sepolia
 }
 
+export const SwapRouter02_ADDRESS: Record<number, `0x${string}`> = {
+  1: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',         // Mainnet
+  11155111: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E',  // Sepolia
+}
+
 // ==========================================
 // 辅助函数
 // ==========================================
