@@ -3,7 +3,8 @@
 > **A Xianxia-themed Web3 Token Swap Application.**
 > **基于修仙背景的 Web3 代币兑换应用。**
 
-[![Project Status](https://img.shields.io/badge/Project-Demo-blueviolet?style=for-the-badge)](https://github.com/icefree/Web3-Sprint-Swap)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge)](https://icefree.github.io/Web3-Sprint-Swap/)
+[![Project Status](https://img.shields.io/badge/Project-Source-blueviolet?style=for-the-badge)](https://github.com/icefree/Web3-Sprint-Swap)
 [![Tech Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20Wagmi%20%7C%20Viem-success?style=for-the-badge)](https://wagmi.sh)
 
 [English](#english) | [简体中文](#简体中文)
